@@ -1,0 +1,85 @@
+#include <Arduino_LSM9DS1.h>
+
+const float ANGULAR_THRESHOLD = 75.0; // En degrés/s²
+
+float prevX = 0, prevY = 0, prevZ = 0;
+unsigned long prevTime = 0;
+
+void setup() {
+    Serial.begin(9600);   // Communication avec le PC
+    Serial1.begin(9600);  // Communication avec la SODAQ ExpLoRer via TX/RX
+    while (!Serial);
+
+    if (!IMU.begin()) {
+        Serial.println("Erreur : Gyroscope non détecté ");
+        while (1);
+    }
+    Serial.println("IMU initialisé !");
+}
+
+void loop() {
+    float x, y, z;
+    unsigned long currentTime = millis();
+    float deltaTime = (currentTime - prevTime) / 1000.0; // en secondes
+
+    if (deltaTime == 0) return; 
+
+    if (IMU.gyroscopeAvailable()) {
+        IMU.readGyroscope(x, y, z);
+
+        // Convertir en degrés/s
+        x *= 57.2958;
+        y *= 57.2958;
+        z *= 57.2958;
+
+        // Calculer l'accélération angulaire
+        float accelX = (x - prevX) / deltaTime;
+        float accelY = (y - prevY) / deltaTime;
+        float accelZ = (z - prevZ) / deltaTime;
+
+        // Vérifier si l’accélération dépasse le seuil
+        if (abs(accelX) > ANGULAR_THRESHOLD || abs(accelY) > ANGULAR_THRESHOLD || abs(accelZ) > ANGULAR_THRESHOLD) {
+            unsigned long timestamp = millis();
+            Serial.println(" ALERTE : Explosion détectée !");
+            envoyerExplosion(timestamp, x, y, z, accelX, accelY, accelZ);
+
+            Serial.println("Pause de 5 secondes avant redémarrage...");
+            delay(5000);
+
+            Serial.println("Redémarrage du système...");
+            resetSystem();
+        }
+
+        prevX = x;
+        prevY = y;
+        prevZ = z;
+        prevTime = currentTime;
+    }
+
+    delay(500);
+}
+
+// Fonction d'envoi des données d’explosion (ENVOI SUR Serial1)
+void envoyerExplosion(unsigned long timestamp, float x, float y, float z, float ax, float ay, float az) {
+    Serial.println(" Envoi des données d'explosion...");
+
+    Serial1.print("EXPLOSION,");
+    Serial1.print(timestamp); Serial1.print(",");
+    Serial1.print(x); Serial1.print(",");
+    Serial1.print(y); Serial1.print(",");
+    Serial1.print(z); Serial1.print(",");
+    Serial1.print(ax); Serial1.print(",");
+    Serial1.print(ay); Serial1.print(",");
+    Serial1.println(az);
+}
+
+// Fonction de redémarrage
+void resetSystem() {
+    #if defined(ESP32)
+        ESP.restart();
+    #elif defined(_AVR_)
+        asm volatile ("  jmp 0");
+    #else
+        Serial.println("Reset non supporté sur cette plateforme !");
+    #endif
+}
