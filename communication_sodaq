@@ -1,0 +1,77 @@
+#include <TinyGPS++.h>
+
+// GPS sur Serial1 (TX = D1, RX = D0)
+TinyGPSPlus gps;
+
+void setup() {
+    SerialUSB.begin(9600);
+    Serial.begin(9600);  // Communication Nano 33 BLE via D0/D1
+    Serial1.begin(9600); // GPS connecté à Serial1
+
+    while (!SerialUSB);
+    SerialUSB.println("SODAQ prête à recevoir les alertes !");
+}
+
+void loop() {
+    // Mise à jour du GPS
+    while (Serial1.available()) {
+        gps.encode(Serial1.read());
+    }
+
+    if (Serial.available()) {
+        String data = Serial.readStringUntil('\n'); 
+
+        if (data.startsWith("EXPLOSION,")) {
+            SerialUSB.println(" ALERTE : Explosion détectée !");
+            SerialUSB.println(" Données reçues : " + data);
+            afficherDonneesExplosion(data);
+        } else {
+            SerialUSB.println(" Données  reçues : " + data);
+        }
+    }
+}
+
+// Fonction d'affichage des données d'explosion
+void afficherDonneesExplosion(String data) {
+    float values[7];  // Ajout du timestamp
+    int index = 0;
+
+    int pos = data.indexOf(',');
+    while (pos > 0 && index < 7) {
+        int nextPos = data.indexOf(',', pos + 1);
+        if (nextPos == -1) nextPos = data.length();
+        values[index] = data.substring(pos + 1, nextPos).toFloat();
+        pos = nextPos;
+        index++;
+    }
+
+    // Obtenir l'heure GPS si disponible
+    String explosionTime;
+    if (gps.time.isValid()) {
+        explosionTime = String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second());
+    } else {
+        explosionTime = "Timestamp (ms) : " + String(values[0]);
+    }
+
+    // Obtenir la position GPS si disponible
+    String latitude = gps.location.isValid() ? String(gps.location.lat(), 6) : "Non dispo";
+    String longitude = gps.location.isValid() ? String(gps.location.lng(), 6) : "Non dispo";
+
+    // Affichage des valeurs reçues
+    SerialUSB.println("Heure : " + explosionTime);
+    SerialUSB.println("Position GPS : Lat " + latitude + " / Lon " + longitude);
+
+    SerialUSB.println(" Vitesse angulaire (°/s) :");
+    SerialUSB.print(" - X: "); SerialUSB.println(values[1]);
+    SerialUSB.print(" - Y: "); SerialUSB.println(values[2]);
+    SerialUSB.print(" - Z: "); SerialUSB.println(values[3]);
+
+    SerialUSB.println(" Accélération angulaire (°/s²) :");
+    SerialUSB.print(" - AX: "); SerialUSB.println(values[4]);
+    SerialUSB.print(" - AY: "); SerialUSB.println(values[5]);
+    SerialUSB.print(" - AZ: "); SerialUSB.println(values[6]);
+
+    SerialUSB.println("------------------------------");
+}
+
+
